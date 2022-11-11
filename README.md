@@ -6,7 +6,7 @@ https://cva6.readthedocs.io/en/latest/
 
 Checkout the repository and initialize all submodules:
 ```
-$ git clone --recursive https://github.com/ThalesGroup/cva6-softcore-contest.git
+$ git clone --recursive https://forgens.univ-ubs.fr/gitlab/breizh-hat/cva6-softcore-contest
 ```
 
 Do not forget to check all the details of the contest in [Annonce RISC-V contest 2022-2023 v1.pdf](./Annonce%20RISC-V%20contest%202022-2023%20v1.pdf).
@@ -19,7 +19,7 @@ Thank you to Wilander and Nikiforakis for providing an open source intrusion pre
 
 ## Vitis/Vivado setting up
 
-For the contest, the CVA6 processor will be implemented on Zybo Z7-20 board from Digilent. This board integrates a Zynq 7000 FPGA from Xilinx. 
+For the contest, the CVA6 processor will be implemented on Zybo Z7-20 board from Digilent. This board integrates a Zynq 7000 FPGA from Xilinx.
 To do so, **Vitis 2020.1** environment from Xilinx needs to be installed.
 
 Furthermore, Digilent provides board files for each development board.
@@ -31,7 +31,7 @@ https://reference.digilentinc.com/reference/programmable-logic/guides/installati
 
 **Be careful about your linux distribution and the supported version of Vitis 2020.1 environment.**
 
-## Hardware 
+## Hardware
 
 If you have not yet done so, start provisioning the following:
 
@@ -103,7 +103,7 @@ To initialize Zephyr environment with the Thales modified Zephyr:
 
 ```
 cd /workdir
-west init -m https://github.com/ThalesGroup/riscv-zephyr --mr main
+west init -m https://forgens.univ-ubs.fr/gitlab/breizh-hat/riscv-zephyr --mr main
 west update
 ```
 

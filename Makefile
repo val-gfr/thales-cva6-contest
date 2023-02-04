@@ -21,7 +21,6 @@
 # Revisions  :
 # Date        Version  Author       Description
 # 2020-10-06  0.1      S.Jacq       modification for CVA6 softcore
-# 2022-11-15  0.1.1    R.Alex	    modification of XILINX_BOARD
 # =========================================================================== #
 
 # questa library
@@ -65,7 +64,7 @@ app_path := $(root-dir)/sw/app
 # board name for bitstream generation.
 BOARD          := zybo-z7-20
 XILINX_PART    := xc7z020clg400-1
-XILINX_BOARD   := digilentinc.com:zybo-z7-20:part0:1.1
+XILINX_BOARD   := digilentinc.com:zybo-z7-20:part0:1.0
 CLK_PERIOD_NS  := 25
 BATCH_MODE ?= 1
 

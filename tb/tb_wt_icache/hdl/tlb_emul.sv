@@ -13,8 +13,10 @@
 // Description: simple emulation layer for the tlb.
 //
 
+import ariane_pkg::*;
+import wt_cache_pkg::*;
 
-module tlb_emul import ariane_pkg::*; import wt_cache_pkg::*; #(
+module tlb_emul #(
   parameter TlbRandHitRate = 10 //in percent
 ) (
   input logic            clk_i,

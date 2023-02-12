@@ -46,15 +46,3 @@
 [submodule "src/rv_plic"]
 	path = src/rv_plic
 	url = https://github.com/pulp-platform/rv_plic.git
-[submodule "fpga/src/apb_timer"]
-	path = fpga/src/apb_timer
-	url = https://github.com/pulp-platform/apb_timer.git
-[submodule "tb/dromajo"]
-	path = tb/dromajo
-	url = https://github.com/kabylkas/dromajo.git
-[submodule "tb/common_verification"]
-	path = tb/common_verification
-	url = https://github.com/pulp-platform/common_verification.git
-[submodule "sw/app/coremark"]
-	path = sw/app/coremark
-	url = https://github.com/eembc/coremark

@@ -1,12 +1,13 @@
 
+import ariane_pkg::*;
 
-module mult import ariane_pkg::*; (
+module mult (
     input  logic                     clk_i,
     input  logic                     rst_ni,
     input  logic                     flush_i,
     input  fu_data_t                 fu_data_i,
     input  logic                     mult_valid_i,
-    output riscv::xlen_t             result_o,
+    output logic [63:0]              result_o,
     output logic                     mult_valid_o,
     output logic                     mult_ready_o,
     output logic [TRANS_ID_BITS-1:0] mult_trans_id_o
@@ -16,8 +17,8 @@ module mult import ariane_pkg::*; (
     logic                     div_ready_i; // receiver of division result is able to accept the result
     logic [TRANS_ID_BITS-1:0] mul_trans_id;
     logic [TRANS_ID_BITS-1:0] div_trans_id;
-    riscv::xlen_t             mul_result;
-    riscv::xlen_t             div_result;
+    logic [63:0]              mul_result;
+    logic [63:0]              div_result;
 
     logic                     div_valid_op;
     logic                     mul_valid_op;
@@ -56,8 +57,8 @@ module mult import ariane_pkg::*; (
     // ---------------------
     // Division
     // ---------------------
-    riscv::xlen_t           operand_b, operand_a;  // input operands after input MUX (input silencing, word operations or full inputs)
-    riscv::xlen_t           result;                // result before result mux
+    logic [63:0] operand_b, operand_a;  // input operands after input MUX (input silencing, word operations or full inputs)
+    logic [63:0] result;                // result before result mux
 
     logic        div_signed;            // signed or unsigned division
     logic        rem;                   // is it a reminder (or not a reminder e.g.: a division)
@@ -104,7 +105,7 @@ module mult import ariane_pkg::*; (
     // Serial Divider
     // ---------------------
     serdiv #(
-        .WIDTH       ( riscv::XLEN )
+        .WIDTH       ( 64 )
     ) i_div (
         .clk_i       ( clk_i                ),
         .rst_ni      ( rst_ni               ),

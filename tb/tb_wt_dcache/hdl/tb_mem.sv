@@ -16,9 +16,11 @@
 
 `include "tb.svh"
 
+import ariane_pkg::*;
+import wt_cache_pkg::*;
+import tb_pkg::*;
 
-
-module tb_mem import tb_pkg::*; import ariane_pkg::*; import wt_cache_pkg::*;#(
+module tb_mem #(
   parameter string MemName             = "TB_MEM",
   parameter MemRandHitRate             = 10, //in percent
   parameter MemRandInvRate             = 5,  //in percent
@@ -150,9 +152,7 @@ module tb_mem import tb_pkg::*; import ariane_pkg::*; import wt_cache_pkg::*;#(
             // generate random invalidations
             if (inv_rand_en_i) begin
                 void'(randomize(rnd) with {rnd > 0; rnd <= 100;});
-                // only invalidate if there are no replies in flight to the cache. Otherwise, we
-                // might send data that has just been invalidated.
-                if(rnd < MemRandInvRate && ~infifo_empty) begin
+                if(rnd < MemRandInvRate) begin
                     mem_inv_q <= '1;
                     void'(randomize(lval) with {lval>=0; lval<(MemWords>>3);});
                     void'(randomize(val));

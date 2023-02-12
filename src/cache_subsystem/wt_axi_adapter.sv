@@ -13,8 +13,10 @@
 // Description: adapter module to connect the L1D$ and L1I$ to a 64bit AXI bus.
 //
 
+import ariane_pkg::*;
+import wt_cache_pkg::*;
 
-module wt_axi_adapter import ariane_pkg::*; import wt_cache_pkg::*; #(
+module wt_axi_adapter #(
   parameter int unsigned ReqFifoDepth  = 2,
   parameter int unsigned MetaFifoDepth = wt_cache_pkg::DCACHE_MAX_TX
 ) (
@@ -120,7 +122,7 @@ module wt_axi_adapter import ariane_pkg::*; import wt_cache_pkg::*; #(
     // write channel
     axi_wr_id_in = arb_idx;
     axi_wr_data  = dcache_data.data;
-    axi_wr_addr  = {{64-riscv::PLEN{1'b0}}, dcache_data.paddr};
+    axi_wr_addr  = dcache_data.paddr;
     axi_wr_size  = dcache_data.size[1:0];
     axi_wr_req   = 1'b0;
     axi_wr_blen  = '0;// single word writes
@@ -138,13 +140,13 @@ module wt_axi_adapter import ariane_pkg::*; import wt_cache_pkg::*; #(
 
     // arbiter mux
     if (arb_idx) begin
-      axi_rd_addr  = {{64-riscv::PLEN{1'b0}}, dcache_data.paddr};
+      axi_rd_addr  = dcache_data.paddr;
       axi_rd_size  = dcache_data.size[1:0];
       if (dcache_data.size[2]) begin
         axi_rd_blen = ariane_pkg::DCACHE_LINE_WIDTH/64-1;
       end
     end else begin
-      axi_rd_addr  = {{64-riscv::PLEN{1'b0}}, icache_data.paddr};
+      axi_rd_addr  = icache_data.paddr;
       axi_rd_size  = 2'b11;// always request 64bit words in case of ifill
       if (!icache_data.nc) begin
         axi_rd_blen = ariane_pkg::ICACHE_LINE_WIDTH/64-1;
@@ -502,7 +504,7 @@ module wt_axi_adapter import ariane_pkg::*; import wt_cache_pkg::*; #(
   // assign dcache_rtrn_o.inv.vld  = '0;
   // assign dcache_rtrn_o.inv.all  = '0;
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin : p_rd_buf
+  always_ff @(posedge clk_i) begin : p_rd_buf
     if (!rst_ni) begin
       icache_first_q     <= 1'b1;
       dcache_first_q     <= 1'b1;

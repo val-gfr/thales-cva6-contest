@@ -12,25 +12,16 @@
 // Date: 19.03.2017
 // Description: Ariane Top-level module
 
-`ifdef DROMAJO
-import "DPI-C" function void dromajo_trap(int     hart_id,
-                                          longint cause);
-import "DPI-C" function void dromajo_step(int     hart_id,
-                                          longint pc,
-                                          int     insn,
-                                          longint wdata, longint cycle);
-import "DPI-C" function void init_dromajo(string cfg_f_name);
-`endif
+import ariane_pkg::*;
 
-
-module ariane import ariane_pkg::*; #(
+module ariane #(
   parameter ariane_pkg::ariane_cfg_t ArianeCfg     = ariane_pkg::ArianeDefaultConfig
 ) (
   input  logic                         clk_i,
   input  logic                         rst_ni,
   // Core ID, Cluster ID and boot address are considered more or less static
-  input  logic [riscv::XLEN-1:0]                  boot_addr_i,  // reset boot address
-  input  logic [riscv::XLEN-1:0]                  hart_id_i,    // hart id in a multicore environment (reflected in a CSR)
+  input  logic [63:0]                  boot_addr_i,  // reset boot address
+  input  logic [63:0]                  hart_id_i,    // hart id in a multicore environment (reflected in a CSR)
 
   // Interrupt inputs
   input  logic [1:0]                   irq_i,        // level sensitive IR lines, mip & sip (async)
@@ -38,10 +29,6 @@ module ariane import ariane_pkg::*; #(
   // Timer facilities
   input  logic                         time_irq_i,   // timer interrupt in (async)
   input  logic                         debug_req_i,  // debug request (async)
-`ifdef FIRESIM_TRACE
-  // firesim trace port
-  output traced_instr_pkg::trace_port_t trace_o,
-`endif
 `ifdef PITON_ARIANE
   // L15 (memory side)
   output wt_cache_pkg::l15_req_t       l15_req_o,
@@ -60,15 +47,15 @@ module ariane import ariane_pkg::*; #(
   riscv::priv_lvl_t           priv_lvl;
   exception_t                 ex_commit; // exception from commit stage
   bp_resolve_t                resolved_branch;
-  logic [riscv::VLEN-1:0]     pc_commit;
+  logic [63:0]                pc_commit;
   logic                       eret;
   logic [NR_COMMIT_PORTS-1:0] commit_ack;
 
   // --------------
   // PCGEN <-> CSR
   // --------------
-  logic [riscv::VLEN-1:0]     trap_vector_base_commit_pcgen;
-  logic [riscv::VLEN-1:0]     epc_commit_pcgen;
+  logic [63:0]              trap_vector_base_commit_pcgen;
+  logic [63:0]              epc_commit_pcgen;
   // --------------
   // IF <-> ID
   // --------------
@@ -87,19 +74,14 @@ module ariane import ariane_pkg::*; #(
   // --------------
   // ISSUE <-> EX
   // --------------
-
-
-  logic [riscv::VLEN-1:0] rs1_forwarding_id_ex; // unregistered version of fu_data_o.operanda
-  logic [riscv::VLEN-1:0] rs2_forwarding_id_ex; // unregistered version of fu_data_o.operandb
-
   fu_data_t                 fu_data_id_ex;
-  logic [riscv::VLEN-1:0]   pc_id_ex;
+  logic [63:0]              pc_id_ex;
   logic                     is_compressed_instr_id_ex;
   // fixed latency units
   logic                     flu_ready_ex_id;
   logic [TRANS_ID_BITS-1:0] flu_trans_id_ex_id;
   logic                     flu_valid_ex_id;
-  riscv::xlen_t             flu_result_ex_id;
+  logic [63:0]              flu_result_ex_id;
   exception_t               flu_exception_ex_id;
   // ALU
   logic                     alu_valid_id_ex;
@@ -113,11 +95,11 @@ module ariane import ariane_pkg::*; #(
   logic                     lsu_ready_ex_id;
 
   logic [TRANS_ID_BITS-1:0] load_trans_id_ex_id;
-  riscv::xlen_t             load_result_ex_id;
+  logic [63:0]              load_result_ex_id;
   logic                     load_valid_ex_id;
   exception_t               load_exception_ex_id;
 
-  riscv::xlen_t             store_result_ex_id;
+  logic [63:0]              store_result_ex_id;
   logic [TRANS_ID_BITS-1:0] store_trans_id_ex_id;
   logic                     store_valid_ex_id;
   exception_t               store_exception_ex_id;
@@ -129,7 +111,7 @@ module ariane import ariane_pkg::*; #(
   logic [1:0]               fpu_fmt_id_ex;
   logic [2:0]               fpu_rm_id_ex;
   logic [TRANS_ID_BITS-1:0] fpu_trans_id_ex_id;
-  riscv::xlen_t             fpu_result_ex_id;
+  logic [63:0]              fpu_result_ex_id;
   logic                     fpu_valid_ex_id;
   exception_t               fpu_exception_ex_id;
   // CSR
@@ -143,7 +125,6 @@ module ariane import ariane_pkg::*; #(
   // LSU Commit
   logic                     lsu_commit_commit_ex;
   logic                     lsu_commit_ready_ex_commit;
-  logic [TRANS_ID_BITS-1:0] lsu_commit_trans_id;
   logic                     no_st_pending_ex;
   logic                     no_st_pending_commit;
   logic                     amo_valid_commit;
@@ -155,7 +136,7 @@ module ariane import ariane_pkg::*; #(
   // COMMIT <-> ID
   // --------------
   logic [NR_COMMIT_PORTS-1:0][4:0]  waddr_commit_id;
-  logic [NR_COMMIT_PORTS-1:0][riscv::XLEN-1:0] wdata_commit_id;
+  logic [NR_COMMIT_PORTS-1:0][63:0] wdata_commit_id;
   logic [NR_COMMIT_PORTS-1:0]       we_gpr_commit_id;
   logic [NR_COMMIT_PORTS-1:0]       we_fpr_commit_id;
   // --------------
@@ -170,12 +151,12 @@ module ariane import ariane_pkg::*; #(
   riscv::priv_lvl_t         ld_st_priv_lvl_csr_ex;
   logic                     sum_csr_ex;
   logic                     mxr_csr_ex;
-  logic [riscv::PPNW-1:0]   satp_ppn_csr_ex;
-  logic [ASID_WIDTH-1:0]    asid_csr_ex;
+  logic [43:0]              satp_ppn_csr_ex;
+  logic [0:0]               asid_csr_ex;
   logic [11:0]              csr_addr_ex_csr;
   fu_op                     csr_op_commit_csr;
-  riscv::xlen_t             csr_wdata_commit_csr;
-  riscv::xlen_t             csr_rdata_csr_commit;
+  logic [63:0]              csr_wdata_commit_csr;
+  logic [63:0]              csr_rdata_csr_commit;
   exception_t               csr_exception_csr_commit;
   logic                     tvm_csr_id;
   logic                     tw_csr_id;
@@ -186,13 +167,11 @@ module ariane import ariane_pkg::*; #(
   logic                     icache_en_csr;
   logic                     debug_mode;
   logic                     single_step_csr_commit;
-  riscv::pmpcfg_t [15:0]    pmpcfg;
-  logic [15:0][53:0]        pmpaddr;
   // ----------------------------
   // Performance Counters <-> *
   // ----------------------------
   logic [4:0]               addr_csr_perf;
-  riscv::xlen_t             data_csr_perf, data_perf_csr;
+  logic [63:0]              data_csr_perf, data_perf_csr;
   logic                     we_csr_perf;
 
   logic                     icache_flush_ctrl_cache;
@@ -236,7 +215,6 @@ module ariane import ariane_pkg::*; #(
   dcache_req_i_t [2:0]      dcache_req_ports_ex_cache;
   dcache_req_o_t [2:0]      dcache_req_ports_cache_ex;
   logic                     dcache_commit_wbuffer_empty;
-  logic                     dcache_commit_wbuffer_not_ni;
 
   // --------------
   // Frontend
@@ -247,7 +225,7 @@ module ariane import ariane_pkg::*; #(
     .flush_i             ( flush_ctrl_if                 ), // not entirely correct
     .flush_bp_i          ( 1'b0                          ),
     .debug_mode_i        ( debug_mode                    ),
-    .boot_addr_i         ( boot_addr_i[riscv::XLEN-1:0]  ),
+    .boot_addr_i         ( boot_addr_i                   ),
     .icache_dreq_i       ( icache_dreq_cache_if          ),
     .icache_dreq_o       ( icache_dreq_if_cache          ),
     .resolved_branch_i   ( resolved_branch               ),
@@ -298,8 +276,7 @@ module ariane import ariane_pkg::*; #(
   // ---------
   issue_stage #(
     .NR_ENTRIES                 ( NR_SB_ENTRIES                ),
-    .NR_WB_PORTS                ( NR_WB_PORTS                  ),
-    .NR_COMMIT_PORTS            ( NR_COMMIT_PORTS              )
+    .NR_WB_PORTS                ( NR_WB_PORTS                  )
   ) issue_stage_i (
     .clk_i,
     .rst_ni,
@@ -312,8 +289,6 @@ module ariane import ariane_pkg::*; #(
     .is_ctrl_flow_i             ( is_ctrl_fow_id_issue         ),
     .decoded_instr_ack_o        ( issue_instr_issue_id         ),
     // Functional Units
-    .rs1_forwarding_o           ( rs1_forwarding_id_ex         ),
-    .rs2_forwarding_o           ( rs2_forwarding_id_ex         ),
     .fu_data_o                  ( fu_data_id_ex                ),
     .pc_o                       ( pc_id_ex                     ),
     .is_compressed_instr_o      ( is_compressed_instr_id_ex    ),
@@ -357,15 +332,12 @@ module ariane import ariane_pkg::*; #(
   // EX
   // ---------
   ex_stage #(
-    .ASID_WIDTH ( ASID_WIDTH ),
-    .ArianeCfg  ( ArianeCfg  )
+    .ArianeCfg ( ArianeCfg )
   ) ex_stage_i (
     .clk_i                  ( clk_i                       ),
     .rst_ni                 ( rst_ni                      ),
     .debug_mode_i           ( debug_mode                  ),
     .flush_i                ( flush_ctrl_ex               ),
-    .rs1_forwarding_i       ( rs1_forwarding_id_ex        ),
-    .rs2_forwarding_i       ( rs2_forwarding_id_ex        ),
     .fu_data_i              ( fu_data_id_ex               ),
     .pc_i                   ( pc_id_ex                    ),
     .is_compressed_instr_i  ( is_compressed_instr_id_ex   ),
@@ -404,7 +376,6 @@ module ariane import ariane_pkg::*; #(
 
     .lsu_commit_i           ( lsu_commit_commit_ex        ), // from commit
     .lsu_commit_ready_o     ( lsu_commit_ready_ex_commit  ), // to commit
-    .commit_tran_id_i       ( lsu_commit_trans_id         ), // from commit
     .no_st_pending_o        ( no_st_pending_ex            ),
     // FPU
     .fpu_ready_o            ( fpu_ready_ex_id             ),
@@ -437,12 +408,7 @@ module ariane import ariane_pkg::*; #(
     .icache_areq_o          ( icache_areq_ex_cache        ),
     // DCACHE interfaces
     .dcache_req_ports_i     ( dcache_req_ports_cache_ex   ),
-    .dcache_req_ports_o     ( dcache_req_ports_ex_cache   ),
-    .dcache_wbuffer_empty_i ( dcache_commit_wbuffer_empty ),
-    .dcache_wbuffer_not_ni_i ( dcache_commit_wbuffer_not_ni ),
-    // PMP
-    .pmpcfg_i               ( pmpcfg                      ),
-    .pmpaddr_i              ( pmpaddr                     )
+    .dcache_req_ports_o     ( dcache_req_ports_ex_cache   )
   );
 
   // ---------
@@ -453,9 +419,7 @@ module ariane import ariane_pkg::*; #(
   // used e.g. for fence instructions.
   assign no_st_pending_commit = no_st_pending_ex & dcache_commit_wbuffer_empty;
 
-  commit_stage #(
-    .NR_COMMIT_PORTS ( NR_COMMIT_PORTS )
-  ) commit_stage_i (
+  commit_stage commit_stage_i (
     .clk_i,
     .rst_ni,
     .halt_i                 ( halt_ctrl                     ),
@@ -472,7 +436,6 @@ module ariane import ariane_pkg::*; #(
     .we_fpr_o               ( we_fpr_commit_id              ),
     .commit_lsu_o           ( lsu_commit_commit_ex          ),
     .commit_lsu_ready_i     ( lsu_commit_ready_ex_commit    ),
-    .commit_tran_id_o       ( lsu_commit_trans_id           ),
     .amo_valid_commit_o     ( amo_valid_commit              ),
     .amo_resp_i             ( amo_resp                      ),
     .commit_csr_o           ( csr_commit_commit_ex          ),
@@ -494,16 +457,12 @@ module ariane import ariane_pkg::*; #(
   // ---------
   csr_regfile #(
     .AsidWidth              ( ASID_WIDTH                    ),
-    .DmBaseAddress          ( ArianeCfg.DmBaseAddress       ),
-    .NrCommitPorts          ( NR_COMMIT_PORTS               ),
-    .NrPMPEntries           ( ArianeCfg.NrPMPEntries        )
+    .DmBaseAddress          ( ArianeCfg.DmBaseAddress       )
   ) csr_regfile_i (
     .flush_o                ( flush_csr_ctrl                ),
     .halt_csr_o             ( halt_csr_ctrl                 ),
     .commit_instr_i         ( commit_instr_id_commit        ),
     .commit_ack_i           ( commit_ack                    ),
-    .boot_addr_i            ( boot_addr_i[riscv::XLEN-1:0]  ),
-    .hart_id_i              ( hart_id_i[riscv::XLEN-1:0]    ),
     .ex_i                   ( ex_commit                     ),
     .csr_op_i               ( csr_op_commit_csr             ),
     .csr_write_fflags_i     ( csr_write_fflags_commit_cs    ),
@@ -541,14 +500,13 @@ module ariane import ariane_pkg::*; #(
     .perf_data_o            ( data_csr_perf                 ),
     .perf_data_i            ( data_perf_csr                 ),
     .perf_we_o              ( we_csr_perf                   ),
-    .pmpcfg_o               ( pmpcfg                        ),
-    .pmpaddr_o              ( pmpaddr                       ),
     .debug_req_i,
     .ipi_i,
     .irq_i,
     .time_irq_i,
     .*
   );
+
   // ------------------------
   // Performance Counters
   // ------------------------
@@ -639,7 +597,6 @@ module ariane import ariane_pkg::*; #(
     .dcache_req_ports_o    ( dcache_req_ports_cache_ex   ),
     // write buffer status
     .wbuffer_empty_o       ( dcache_commit_wbuffer_empty ),
-    .wbuffer_not_ni_o      ( dcache_commit_wbuffer_not_ni ),
 `ifdef PITON_ARIANE
     .l15_req_o             ( l15_req_o                   ),
     .l15_rtrn_i            ( l15_rtrn_i                  )
@@ -686,7 +643,6 @@ module ariane import ariane_pkg::*; #(
     .axi_req_o             ( axi_req_o                   ),
     .axi_resp_i            ( axi_resp_i                  )
   );
-  assign dcache_commit_wbuffer_not_ni = 1'b1;
 `endif
 
   // -------------------
@@ -701,30 +657,13 @@ module ariane import ariane_pkg::*; #(
   // -------------------
   // Instruction Tracer
   // -------------------
-
-  // Instruction trace port (used for FireSim)
-`ifdef FIRESIM_TRACE
-  for (genvar i = 0; i < NR_COMMIT_PORTS; i++) begin : gen_tp_connect
-    assign trace_o[i].clock = clk_i;
-    assign trace_o[i].reset = rst_ni;
-    assign trace_o[i].valid = commit_ack[i] & ~commit_instr_id_commit[i].ex.valid;
-    assign trace_o[i].iaddr = commit_instr_id_commit[i].pc;
-    assign trace_o[i].insn = commit_instr_id_commit[i].ex.tval[31:0];
-    assign trace_o[i].priv = priv_lvl;
-    assign trace_o[i].exception = commit_ack[i] & commit_instr_id_commit[i].ex.valid & ~commit_instr_id_commit[i].ex.cause[63];
-    assign trace_o[i].interrupt = commit_ack[i] & commit_instr_id_commit[i].ex.valid & commit_instr_id_commit[i].ex.cause[63];
-    assign trace_o[i].cause = commit_instr_id_commit[i].ex.cause;
-    assign trace_o[i].tval = commit_instr_id_commit[i].ex.tval[31:0];
-  end
-`endif
-
   //pragma translate_off
 `ifdef PITON_ARIANE
   localparam PC_QUEUE_DEPTH = 16;
 
   logic        piton_pc_vld;
-  logic [riscv::VLEN-1:0] piton_pc;
-  logic [NR_COMMIT_PORTS-1:0][riscv::VLEN-1:0] pc_data;
+  logic [63:0] piton_pc;
+  logic [NR_COMMIT_PORTS-1:0][63:0] pc_data;
   logic [NR_COMMIT_PORTS-1:0] pc_pop, pc_empty;
 
   for (genvar i = 0; i < NR_COMMIT_PORTS; i++) begin : gen_pc_fifo
@@ -813,50 +752,9 @@ module ariane import ariane_pkg::*; #(
   int f;
   logic [63:0] cycles;
 
-`ifdef DROMAJO
-  initial begin
-    string f_name;
-    if ($value$plusargs("checkpoint=%s", f_name)) begin
-      init_dromajo({f_name, ".cfg"});
-      $display("Done initing dromajo...");
-    end else begin
-      $display("Failed initing dromajo. Provide checkpoint name.");
-    end
-  end
-`endif
-
   initial begin
     f = $fopen("trace_hart_00.dasm", "w");
   end
-
-`ifdef DROMAJO
-  always_ff @(posedge clk_i) begin
-      for (int i = 0; i < NR_COMMIT_PORTS; i++) begin
-        if (commit_instr_id_commit[i].ex.valid) begin
-          dromajo_trap(hart_id_i,
-                       commit_instr_id_commit[i].ex.cause);
-        end
-      end
-  end
-
-  always_ff @(posedge clk_i) begin
-    for (int i = 0; i < NR_COMMIT_PORTS; i++) begin
-      if (commit_ack[i] && !commit_instr_id_commit[i].ex.valid) begin
-        if (csr_op_commit_csr == 0) begin
-          dromajo_step(hart_id_i,
-                       commit_instr_id_commit[i].pc,
-                       commit_instr_id_commit[i].ex.tval[31:0],
-                       commit_instr_id_commit[i].result, cycles);
-        end else begin
-          dromajo_step(hart_id_i,
-                       commit_instr_id_commit[i].pc,
-                       commit_instr_id_commit[i].ex.tval[31:0],
-                       csr_rdata_csr_commit, cycles);
-        end
-      end
-    end
-  end
-`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (~rst_ni) begin
@@ -897,3 +795,4 @@ module ariane import ariane_pkg::*; #(
 //pragma translate_on
 
 endmodule // ariane
+

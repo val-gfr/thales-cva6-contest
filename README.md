@@ -1,270 +1,327 @@
-# Getting started
+[![Build Status](https://travis-ci.org/pulp-platform/ariane.svg?branch=master)](https://travis-ci.org/pulp-platform/ariane)
 
-To get more familiar with CVA6 architecture, a partial documentation is available:
+# Ariane RISC-V CPU
 
-https://cva6.readthedocs.io/en/latest/
+Ariane is a 6-stage, single issue, in-order CPU which implements the 64-bit RISC-V instruction set. It fully implements I, M, A and C extensions as specified in Volume I: User-Level ISA V 2.3 as well as the draft privilege extension 1.10. It implements three privilege levels M, S, U to fully support a Unix-like operating system. Furthermore it is compliant to the draft external debug spec 0.13.
 
-Checkout the repository and initialize all submodules:
+It has configurable size, separate TLBs, a hardware PTW and branch-prediction (branch target buffer and branch history table). The primary design goal was on reducing critical path length.
+
+![](docs/img/ariane_overview.png)
+
+Table of Contents
+=================
+
+   * [Ariane RISC-V CPU](#ariane-risc-v-cpu)
+   * [Table of Contents](#table-of-contents)
+      * [Getting Started](#getting-started)
+         * [Running User-Space Applications](#running-user-space-applications)
+      * [FPGA Emulation](#fpga-emulation)
+         * [Programming the Memory Configuration File](#programming-the-memory-configuration-file)
+         * [Preparing the SD Card](#preparing-the-sd-card)
+         * [Generating a Bitstream](#generating-a-bitstream)
+         * [Debugging](#debugging)
+         * [Preliminary Support for OpenPiton Cache System](#preliminary-support-for-openpiton-cache-system)
+      * [Planned Improvements](#planned-improvements)
+      * [Going Beyond](#going-beyond)
+         * [CI Testsuites and Randomized Constrained Testing with Torture](#ci-testsuites-and-randomized-constrained-testing-with-torture)
+         * [Re-generating the Bootcode (ZSBL)](#re-generating-the-bootcode-zsbl)
+   * [Contributing](#contributing)
+   * [Acknowledgements](#acknowledgements)
+
+Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc)
+
+## Getting Started
+
+Go and get the [RISC-V tools](https://github.com/riscv/riscv-tools). Make sure that your `RISCV` environment variable points to your RISC-V installation (see the RISC-V tools and related projects for further information).
+
+Checkout the repository and initialize all submodules
 ```
-$ git clone --recursive https://github.com/ThalesGroup/cva6-softcore-contest.git
-```
-
-Do not forget to check all the details of the contest in [Annonce RISC-V contest 2022-2023 v1.pdf](./Annonce%20RISC-V%20contest%202022-2023%20v1.pdf).
-
-This repository contains the files needed for the 2022-2023 contest focusing on security. The 2020-2021 contest focusing on the performance can be retrieved in this repository under the cv32a6_contest_2020 GitHub tag. The 2021-2022 contest focusing on energy efficiency can be retrieved in this repository under the cv32a6_contest_2021 GitHub tag.
-
-Thank you to Wilander and Nikiforakis for providing an open source intrusion prevention evaluator [RIPE](https://github.com/johnwilander/RIPE).
-
-# Prerequisites
-
-## Vitis/Vivado setting up
-
-For the contest, the CVA6 processor will be implemented on Zybo Z7-20 board from Digilent. This board integrates a Zynq 7000 FPGA from Xilinx. 
-To do so, **Vitis 2020.1** environment from Xilinx needs to be installed.
-
-Furthermore, Digilent provides board files for each development board.
-
-These files ease the creation of new projects with automated configuration of several complicated components such as Zynq Processing System and memory interfaces.
-
-All guidelines to install **vitis 2020.1** and **Zybo Z7-20** board files are explained in
-https://reference.digilentinc.com/reference/programmable-logic/guides/installation.
-
-**Be careful about your linux distribution and the supported version of Vitis 2020.1 environment.**
-
-## Hardware 
-
-If you have not yet done so, start provisioning the following:
-
-| Reference	                 | URL                                                                             |	Remark                            |
-| :------------------------- | :------------------------------------------------------------------------------ | :-------------------------------- |
-| Zybo Z7-20	                | https://store.digilentinc.com/zybo-z7-zynq-7000-arm-fpga-soc-development-board/ | Zybo Z7-10 is too small for CVA6. |
-| Pmod USBUART               |	https://store.digilentinc.com/pmod-usbuart-usb-to-uart-interface/               |	Used for the console output       |
-| JTAG-HS2 Programming Cable |	https://store.digilentinc.com/jtag-hs2-programming-cable/                       |                                   |
-| Connectors                 |	https://store.digilentinc.com/pmod-cable-kit-2x6-pin-and-2x6-pin-to-dual-6-pin-pmod-splitter-cable/ |	At least a 6-pin connector Pmod is necessary; other references may offer it. |
-
-# FPGA platform
-
-A FPGA platform running **CV32A6** (CVA6 in 32b flavor) has been implemented on **Zybo Z7-20**
-
-This platform includes a CV32A6 processor, a JTAG interface to run and debug software applications and a UART interface to display strings on hyperterminal.
-
-The steps to run the RIPE application on CV32A6 FPGA platform are described below.
-
-The JTAG-HS2 programming cable is initially a cable that allows programming of Xilinx FPGAs (bitstream loading) from a host PC.
-
-In our case, we use this cable to program software applications on the CV32A6 instantiated in the FPGA through a PMOD connector.
-
-## Get the Zybo ready
-
-1. First, make sure the Digilent **JTAG-HS2 debug adapter** is properly connected to the **PMOD JE** connector and that the USBAUART adapter is properly connected to the **PMOD JB** connector of the Zybo Z7-20 board.
-![alt text](./docs/pictures/20201204_150708.jpg)
-
-2. Generate the bitstream of the FPGA platform:
-```
-$ make cva6_fpga
+$ git clone https://github.com/pulp-platform/ariane.git
+$ git submodule update --init --recursive
 ```
 
-3. When the bitstream is generated, switch on Zybo board and run:
+Build the Verilator model of Ariane by using the Makefile:
 ```
-$ make program_cva6_fpga
-```
-When the bitstream is loaded, the green LED `done` lights up.
-![alt text](./docs/pictures/20201204_160542.jpg)
-
-4. Get a hyperterminal configured on /dev/ttyUSB0 115200-8-N-1
-
-Now, the hardware is ready and the hyperterminal is connected to the UART output of the FPGA. We can now start the software.
-
-## Get started with Zephyr in the docker image
-
-### Installation
-
-#### Building Developer Docker Image
-
-The developer docker image can be built using the following command from the zephyr-docker folder:
-
-```
-cd zephyr-docker
-docker build -f Dockerfile --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t zephyr-build:v1 .
+$ make verilate
 ```
 
-It can be used for building Zephyr samples and tests by mounting the Zephyr workspace into it:
-
+To build the verilator model with support for vcd files run
 ```
-docker run -ti --privileged -v `realpath workspace`:/workdir zephyr-build:v1
-```
-
-All the following commands should be run from the docker.
-
-### Usage
-
-#### Initialization of Zephyr
-
-To initialize Zephyr environment with the Thales modified Zephyr:
-
-```
-cd /workdir
-west init -m https://github.com/ThalesGroup/riscv-zephyr --mr main
-west update
+$ make verilate DEBUG=1
 ```
 
-Thales modifications add CV32A6 support on Zybo board.
-
-#### Building a sample application
-
-Follow the steps below to build and run a sample application:
+This will create a C++ model of the core including a SystemVerilog wrapper and link it against a C++ testbench (in the `tb` subfolder). The binary can be found in the `work-ver` and accepts a RISC-V ELF binary as an argument, e.g.:
 
 ```
-west build -p -b qemu_riscv32 /workdir/zephyr/samples/hello_world
-west build -t run
+$ work-ver/Variane_testharness rv64um-v-divuw
 ```
 
-You should now have a running hello world project on qemu_riscv32.
+The Verilator testbench makes use of the `riscv-fesvr`. This means that you can use the `riscv-tests` repository as well as `riscv-pk` out-of-the-box. As a general rule of thumb the Verilator model will behave like Spike (exception for being orders of magnitudes slower).
 
-#### Building RIPE for the CV32A6 on ZYBO
-
-The test is selected in the /workdir/ripe/src/ripe_attack_generator.c file with the following macro :
-```
-#define ATTACK_NR 1
-```
-By default its value is 1 but you should try to protect against as many scenario as possible.
-
-Now that we have a working environment, we can build the RIPE attack.
+Both, the Verilator model as well as the Questa simulation will produce trace logs. The Verilator trace is more basic but you can feed the log to `spike-dasm` to resolve instructions to mnemonics. Unfortunately value inspection is currently not possible for the Verilator trace file.
 
 ```
-west build -p -b cv32a6_zybo /workdir/ripe
+$ spike-dasm < trace_hart_00.dasm > logfile.txt
 ```
 
-#### Running the RIPE application on the CV32A6
+### Running User-Space Applications
 
-You can launch the elf file located in build/zephyr/zephyr.elf with the tools provided by zephyr-sdk.
+It is possible to run user-space binaries on Ariane with `riscv-pk` ([link](https://github.com/riscv/riscv-pk)).
+
 ```
-west debug
+$ mkdir build
+$ cd build
+$ ../configure --prefix=$RISCV --host=riscv64-unknown-elf
+$ make
+$ make install
 ```
 
-You should see
+Then to run a RISC-V ELF using the Verilator model do:
+
 ```
-user@62813f8ca741:/workdir$ west debug
--- west debug: rebuilding
-ninja: no work to do.
--- west debug: using runner openocd
--- runners.openocd: OpenOCD GDB server running on port 3333; no thread info available
-Open On-Chip Debugger 0.11.0+dev-00725-gc5c47943d-dirty (2022-10-03-06:14)
+$ echo '
+#include <stdio.h>
+
+int main(int argc, char const *argv[]) {
+    printf("Hello Ariane!\\n");
+    return 0;
+}' > hello.c
+$ riscv64-unknown-elf-gcc hello.c -o hello.elf
+```
+
+```
+$ make verilate
+$ work-ver/Variane_testharness $RISCV/riscv64-unknown-elf/bin/pk hello.elf
+```
+
+If you want to use QuestaSim to run it you can use the following command:
+```
+$ make sim elf-bin=$RISCV/riscv64-unknown-elf/bin/pk target-options=hello.elf  batch-mode=1
+```
+
+> Be patient! RTL simulation is way slower than Spike. If you think that you ran into problems you can inspect the trace files.
+
+## FPGA Emulation
+
+We currently only provide support for the [Genesys 2 board](https://reference.digilentinc.com/reference/programmable-logic/genesys-2/reference-manual). We provide pre-build bitstream and memory configuration files for the Genesys 2 [here](https://github.com/pulp-platform/ariane/releases).
+
+Tested on Vivado 2018.2. The FPGA SoC currently contains the following peripherals:
+
+- DDR3 memory controller
+- SPI controller to conncet to an SDCard
+- Ethernet controller
+- JTAG port (see debugging section below)
+- Bootrom containing zero stage bootloader and device tree.
+
+![](docs/img/fpga_bd.png)
+
+> The ethernet controller and the corresponding network connection is still work in progress and not functional at the moment. Expect some updates soon-ish.
+
+### Programming the Memory Configuration File
+
+- Open Vivado
+- Open the hardware manager and open the target board (Genesys II - `xc7k325t`)
+- Tools - Add Configuration Memory Device
+- Select the following Spansion SPI flash `s25fl256xxxxxx0`
+- Add `ariane_xilinx.mcs`
+- Press Ok. Flashing will take a couple of minutes.
+- Right click on the FPGA device - Boot from Configuration Memory Device (or press the program button on the FPGA)
+
+### Preparing the SD Card
+
+The first stage bootloader will boot from SD Card by default. Get yourself a suitable SD Card (we use [this](https://www.amazon.com/Kingston-Digital-Mobility-MBLY10G2-32GB/dp/B00519BEQO) one). Either grab a pre-built Linux image from [here](https://github.com/pulp-platform/ariane-sdk/releases) or generate the Linux image yourself following the README in the [ariane-sdk repository](https://github.com/pulp-platform/ariane-sdk). Prepare the SD Card by following the "Booting from SD card" section in the ariane-sdk repository.
+
+Connect a terminal to the USB serial device opened by the FTDI chip e.g.:
+```
+$ screen /dev/ttyUSB0 115200
+```
+
+Default baudrate set by the bootlaoder and Linux is `115200`.
+
+After you've inserted the SD Card and programmed the FPGA you can connect to the serial port of the FPGA and should see the bootloader and afterwards Linux booting. Default username is `root`, no password required.
+
+### Generating a Bitstream
+
+To generate the FPGA bitstream (and memory configuration) yourself for the Genesys II board run:
+
+```
+$ make fpga
+```
+
+This will produce a bitstream file and memory configuration file (in `fpga/work-fpga`) which you can permanently flash by running the above commands.
+
+### Debugging
+
+You can debug (and program) the FPGA using [OpenOCD](http://openocd.org/doc/html/Architecture-and-Core-Commands.html). We provide two example scripts for OpenOCD below.
+
+To get started, connect the micro USB port that is labeled with JTAG to your machine. This port is attached to the FTDI 2232 USB-to-serial chip on the Genesys 2 board, and is usually used to access the native JTAG interface of the Kintex-7 FPGA (e.g. to program the device using Vivado). However, the FTDI chip also exposes a second serial link that is routed to GPIO pins on the FPGA, and we leverage this to wire up the JTAG from the RISC-V debug module.
+
+>If you are on an Ubuntu based system you need to add the following udev rule to `/etc/udev/rules.d/99-ftdi.rules`
+>```
+> SUBSYSTEM=="usb", ACTION=="add", ATTRS{idProduct}=="6010", ATTRS{idVendor}=="0403", MODE="664", GROUP="plugdev"
+>```
+
+Once attached to your system, the FTDI chip should be listed when you type `lsusb`:
+
+```
+Bus 005 Device 019: ID 0403:6010 Future Technology Devices International, Ltd FT2232C/D/H Dual UART/FIFO IC
+```
+
+If this is the case, you can go on and start openocd with the `fpga/ariane.cfg` configuration file:
+
+```
+$ openocd -f fpga/ariane.cfg
+Open On-Chip Debugger 0.10.0+dev-00195-g933cb87 (2018-09-14-19:32)
 Licensed under GNU GPL v2
 For bug reports, read
-        http://openocd.org/doc/doxygen/bugs.html
+    http://openocd.org/doc/doxygen/bugs.html
+adapter speed: 1000 kHz
 Info : auto-selecting first available session transport "jtag". To override use 'transport select <transport>'.
-Warn : `riscv set_prefer_sba` is deprecated. Please use `riscv set_mem_access` instead.
-Ready for Remote Connections
 Info : clock speed 1000 kHz
-Info : JTAG tap: riscv.cpu tap/device found: 0x249511c3 (mfg: 0x0e1 (Wintec Industries), part: 0x4951, ver: 0x2)
+Info : TAP riscv.cpu does not have IDCODE
 Info : datacount=2 progbufsize=8
 Info : Examined RISC-V core; found 1 harts
-Info :  hart 0: XLEN=32, misa=0x40141105
-Info : starting gdb server for riscv.cpu on 3333
+Info :  hart 0: XLEN=64, misa=0x8000000000141105
 Info : Listening on port 3333 for gdb connections
-    TargetName         Type       Endian TapName            State
---  ------------------ ---------- ------ ------------------ ------------
- 0* riscv.cpu          riscv      little riscv.cpu          halted
-
-Info : Listening on port 6333 for tcl connections
+Ready for Remote Connections
+Info : Listening on port 6666 for tcl connections
 Info : Listening on port 4444 for telnet connections
-GNU gdb (Zephyr SDK 0.15.1) 12.1
-Copyright (C) 2022 Free Software Foundation, Inc.
-License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
-This is free software: you are free to change and redistribute it.
-There is NO WARRANTY, to the extent permitted by law.
-Type "show copying" and "show warranty" for details.
-This GDB was configured as "--host=x86_64-build_pc-linux-gnu --target=riscv64-zephyr-elf".
-Type "show configuration" for configuration details.
-For bug reporting instructions, please see:
-<https://github.com/zephyrproject-rtos/sdk-ng/issues>.
-Find the GDB manual and other documentation resources online at:
-    <http://www.gnu.org/software/gdb/documentation/>.
-
-For help, type "help".
-Type "apropos word" to search for commands related to "word"...
-Reading symbols from /workdir/build/zephyr/zephyr.elf...
-Remote debugging using :3333
 Info : accepting 'gdb' connection on tcp/3333
-_exit (status=<optimized out>) at /workdir/zephyr/lib/libc/newlib/libc-hooks.c:281
-281             while (1) {
-Loading section rom_start, size 0x18 lma 0x80000000
-Loading section reset, size 0x4 lma 0x80000018
-Loading section exceptions, size 0x1c8 lma 0x8000001c
-Loading section text, size 0x72ec lma 0x800001e4
-Loading section initlevel, size 0x28 lma 0x800074d0
-Loading section devices, size 0x18 lma 0x800074f8
-Loading section sw_isr_table, size 0x200 lma 0x80007510
-Loading section device_handles, size 0x6 lma 0x80007710
-Loading section rodata, size 0x1120 lma 0x80007718
-Loading section datas, size 0x6c0 lma 0x8000b160
-Loading section device_states, size 0x4 lma 0x8000b820
-Loading section k_mutex_area, size 0x14 lma 0x8000b824
-Start address 0x80000000, load size 36622
-Transfer rate: 63 KB/sec, 2817 bytes/write.
 ```
 
-You can then run the RIPE application with command `c`:
+Then you will be able to either connect through `telnet` or with `gdb`:
+
 ```
+$ riscv64-unknown-elf-gdb /path/to/elf
+(gdb) target remote localhost:3333
+(gdb) load
+Loading section .text, size 0x6508 lma 0x80000000
+Loading section .rodata, size 0x900 lma 0x80006508
+(gdb) b putchar
 (gdb) c
 Continuing.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x0000000080009126 in putchar (s=72) at lib/qprintf.c:69
+69    uart_sendchar(s);
+(gdb) si
+0x000000008000912a  69    uart_sendchar(s);
+(gdb) p/x $mepc
+$1 = 0xfffffffffffdb5ee
 ```
 
-On the host hyperterminal you should see:
+You can read or write device memory by using:
 ```
-*** Booting Zephyr OS build zephyr-v3.2.0-324-gf5d5bc39c3af  ***
-RIPE is alive! cv32a6_zybo
-RIPE parameters:
-technique       direct
-inject param    shellcode
-code pointer    ret
-location        stack
-function        memcpy
-----------------
-Shellcode instructions:
-lui t1,  0x80001                     80001337
-addi t1, t1, 0xb1c                   b1c30313
-jalr t1                              000300e7
-----------------
-target_addr == 0x8000afec
-buffer == 0x8000aa70
-payload size == 1409
-bytes to pad: 1392
-
-overflow_ptr: 0x8000aa70
-payload: 7
-
-Executing attack... success.
-Code injection function reached.
-exit
-```
-This result shows that the penetration test has succeeded.
-
-#### Building and executing the perf_baseline test application
-
-The perf_baseline test application is measuring performance of the HW and SW on the FPGA by performing multiple compute, stack access and heap manipulations. This application is generated similarly than RIPE:
-
-```
-west build -p -b cv32a6_zybo /workdir/perf_baseline/
-```
-This step should give you the memory size of the application as follow :
-```
-Memory region         Used Size  Region Size  %age Used
-             RAM:       61936 B         1 GB      0.01%
-        IDT_LIST:          0 GB         2 KB      0.00%
+(gdb) x/i 0x1000
+    0x1000: lui t0,0x4
+(gdb) set {int} 0x1000 = 22
+(gdb) set $pc = 0x1000
 ```
 
-The execution is also similar:
+### Preliminary Support for OpenPiton Cache System
+
+Ariane has preliminary support for the OpenPiton distributed cache system from Princeton University. To this end, a different L1 cache subsystem (`src/cache_subsystem/wt_cache_subsystem.sv`) has been developed that follows a write-through protocol and that has support for cache invalidations and atomics.
+
+The corresponding integration patches will be released on [OpenPiton GitHub repository](https://github.com/PrincetonUniversity/openpiton). Check the `README` in that repository to see how to use Ariane in the OpenPiton setting.
+
+To activate the different cache system, compile your code with the macro `WT_DCACHE` (set by default).
+
+## Planned Improvements
+
+Check-out the issue tab which also loosely tracks planned improvements.
+
+
+## Going Beyond
+
+The core has been developed with a full licensed version of QuestaSim. If you happen to have this simulator available yourself here is how you could run the core with it.
+
+To specify the test to run use (e.g.: you want to run `rv64ui-p-sraw` inside the `tmp/risc-tests/build/isa` folder:
 ```
-west debug
+$ make sim elf-bin=path/to/rv64ui-p-sraw
 ```
 
-On the hyperterminal, you should have the output :
+If you call `sim` with `batch-mode=1` it will run without the GUI. QuestaSim uses `riscv-fesvr` for communication as well.
+
+### CI Testsuites and Randomized Constrained Testing with Torture
+
+We provide two CI configuration files for Travis CI and GitLab CI that run the RISCV assembly tests, the RISCV benchmarks and a randomized RISCV Torture test. The difference between the two is that Travis CI runs these tests only on Verilator, whereas GitLab CI runs the same tests on QuestaSim and Verilator.
+
+If you would like to run the CI test suites locally on your machine, follow any of the two scripts `ci/travis-ci-emul.sh` and `ci/travis-ci-emul.sh` (depending on whether you have QuestaSim or not). In particular, you have to get the required packages for your system, the paths in `ci/path-setup.sh` to match your setup, and run the installation and build scripts prior to running any of the tests suites.
+
+Once everything is set up and installed, you can run the tests suites as follows (using Verilator):
+
 ```
-*** Booting Zephyr OS build zephyr-v3.2.0-327-g869365ab012b  ***
-Begining of execution with depth 12, call number 50, seed value 63728127.000000
-SUCCESS: computed value 868200.000000 - duration: 25.300611 sec 632515274 cycles
+$ make verilate
+$ make run-asm-tests-verilator
+$ make run-benchmarks-verilator
 ```
 
-Your execution duration can be a little different than our, but the computed value should be the same.
+In order to run randomized Torture tests, you first have to generate the randomized program prior to running the simulation:
+
+```
+$ ./ci/get-torture.sh
+$ make torture-gen
+$ make torture-rtest-verilator
+```
+This runs the randomized program on Spike and on the RTL target, and checks whether the two signatures match. The random instruction mix can be configured in the `./tmp/riscv-torture/config/default.config` file.
+
+Ariane can dump a trace-log in Questa which can be easily diffed against Spike with commit log enabled. In `include/ariane_pkg.sv` set:
+
+```verilog
+localparam bit ENABLE_SPIKE_COMMIT_LOG = 1'b1;
+```
+This runs the randomized program on Spike and on the RTL target, and checks whether the two signatures match. The random instruction mix can be configured in the `./tmp/riscv-torture/config/default.config` file.
+This will dump a file called `trace_hart_*_*_commit.log`.
+
+This can be helpful for debugging long traces (e.g.: torture traces). To compile Spike with the commit log feature do:
+
+```
+$ apt-get install device-tree-compiler
+$ mkdir build
+$ cd build
+$ ../configure --prefix=$RISCV --with-fesvr=$RISCV --enable-commitlog
+$ make
+$ [sudo] make install
+```
+
+### Memory Preloading
+
+In standard configuration the debug module will take care of loading the memory content. It will also handle communication with `riscv-fesvr`.
+Depending on the scenario this might not be diserable (e.g.: preloading of a large elf or linux boot in simulation). You can use the preload elf flag to specify the path
+to a binary which will be preloaded.
+
+> You will loose all `riscv-fesvr` communcation like sytemcalls and eoc capabilities.
+
+```
+$ make sim preload=elf
+```
+
+<!-- ### Tandem Verification with Spike
+
+```
+$ make sim preload=/home/zarubaf/Downloads/riscv-tests/build/benchmarks/dhrystone.riscv tandem=1
+```
+There are a couple of caveats:
+
+- Memories should be initialized to zero. Random or `x` are not supported.
+- UART needs to be replaced by a mock UART which exhibits always ready behavior.
+- There is no end of test signaling at the moment. You are supposed to kill the simulation when sufficiently long run.
+- You need to use the modified Spike version in the `tb` subdirectory.
+- The RTC clock needs to be sufficiently slow (e.g.: 32 kHz seems to work). This is needed as otherwise there will be a difference when reading the `mtime` register as the RTL simulation takes more time to propagate the information through the system.
+- All traps except memory traps need to zero the `tval` register. There is a switch you can set in `ariane_pkg`.
+- `mcycle` needs to be incremented with `instret` to be similar to the performance counters found in Spike (IPC = 1)
+ -->
+
+### Re-generating the Bootcode (ZSBL)
+
+The zero stage bootloader (ZSBL) for RTL simulation lives in `bootrom/` while the bootcode for the FPGA is in `fpga/src/bootrom`. The RTL bootcode simply jumps to the base of the DRAM where the FSBL takes over. For the FPGA the ZSBL performs additional housekeeping. Both bootloader pass the hartid as well as address to the device tree in argumen register `a0` and `a1` respectively.
+
+To re-generate the bootcode you can use the existing makefile within those directories. To generate the SystemVerilog files you will need the `bitstring` python package installed on your system.
+
+# Contributing
+
+Check out the [contribution guide](CONTRIBUTING.md)
+
+# Acknowledgements
+
+Thanks to Gian Marti, Thomas Kramer and Thomas E. Benz for implementing the PLIC.

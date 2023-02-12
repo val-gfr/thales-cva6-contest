@@ -24,8 +24,10 @@
 // 3) NC accesses to I/O space are expected to return 32bit from memory.
 //
 
+import ariane_pkg::*;
+import wt_cache_pkg::*;
 
-module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
+module wt_icache  #(
   parameter logic [CACHE_ID_WIDTH-1:0]  RdTxId             = 0,                                  // ID to be used for read transactions
   parameter ariane_pkg::ariane_cfg_t    ArianeCfg          = ariane_pkg::ArianeDefaultConfig     // contains cacheable regions
 ) (
@@ -51,7 +53,7 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
 
   // signals
   logic                                 cache_en_d, cache_en_q;       // cache is enabled
-  logic [riscv::VLEN-1:0]               vaddr_d, vaddr_q;
+  logic [63:0]                          vaddr_d, vaddr_q;
   logic                                 paddr_is_nc;                  // asserted if physical address is non-cacheable
   logic [ICACHE_SET_ASSOC-1:0]          cl_hit;                       // hit from tag compare
   logic                                 cache_rden;                   // triggers cache lookup
@@ -99,7 +101,7 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   assign cl_tag_d  = (areq_i.fetch_valid) ? areq_i.fetch_paddr[ICACHE_TAG_WIDTH+ICACHE_INDEX_WIDTH-1:ICACHE_INDEX_WIDTH] : cl_tag_q;
 
   // noncacheable if request goes to I/O space, or if cache is disabled
-  assign paddr_is_nc = (~cache_en_q) | (~ariane_pkg::is_inside_cacheable_regions(ArianeCfg, {{64-ICACHE_TAG_WIDTH{1'b0}}, cl_tag_d, {ICACHE_INDEX_WIDTH{1'b0}}}));
+  assign paddr_is_nc = (~cache_en_q) | (~ariane_pkg::is_inside_cacheable_regions(ArianeCfg, {cl_tag_d, {ICACHE_INDEX_WIDTH{1'b0}}}));
 
   // pass exception through
   assign dreq_o.ex = areq_i.fetch_exception;
@@ -119,7 +121,7 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
                          ( paddr_is_nc  & mem_data_req_o ) ? cl_offset_q[2]<<2 : // needed since we transfer 32bit over a 64bit AXI bus in this case
                                                              cl_offset_q;
     // request word address instead of cl address in case of NC access
-    assign mem_data_o.paddr = (paddr_is_nc) ? {cl_tag_d, vaddr_q[ICACHE_INDEX_WIDTH-1:3], 3'b0} :                                         // align to 64bit
+    assign mem_data_o.paddr = (paddr_is_nc) ? {cl_tag_d, vaddr_q[ICACHE_INDEX_WIDTH-1:3], 3'b0} :                                         // align to 32bit
                                               {cl_tag_d, vaddr_q[ICACHE_INDEX_WIDTH-1:ICACHE_OFFSET_WIDTH], {ICACHE_OFFSET_WIDTH{1'b0}}}; // align to cl
 end else begin : gen_piton_offset
     // icache fills are either cachelines or 4byte fills, depending on whether they go to the Piton I/O space or not.

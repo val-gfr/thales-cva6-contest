@@ -29,11 +29,11 @@ module scoreboard #(
 
   // regfile like interface to operand read stage
   input  logic [ariane_pkg::REG_ADDR_SIZE-1:0]                  rs1_i,
-  output riscv::xlen_t                                          rs1_o,
+  output logic [63:0]                                           rs1_o,
   output logic                                                  rs1_valid_o,
 
   input  logic [ariane_pkg::REG_ADDR_SIZE-1:0]                  rs2_i,
-  output riscv::xlen_t                                          rs2_o,
+  output logic [63:0]                                           rs2_o,
   output logic                                                  rs2_valid_o,
 
   input  logic [ariane_pkg::REG_ADDR_SIZE-1:0]                  rs3_i,
@@ -58,7 +58,7 @@ module scoreboard #(
   // write-back port
   input ariane_pkg::bp_resolve_t                                resolved_branch_i,
   input logic [NR_WB_PORTS-1:0][ariane_pkg::TRANS_ID_BITS-1:0]  trans_id_i,  // transaction ID at which to write the result back
-  input logic [NR_WB_PORTS-1:0][riscv::XLEN-1:0]                wbdata_i,    // write data in
+  input logic [NR_WB_PORTS-1:0][63:0]                           wbdata_i,    // write data in
   input ariane_pkg::exception_t [NR_WB_PORTS-1:0]               ex_i,        // exception from a functional unit (e.g.: ld/st exception)
   input logic [NR_WB_PORTS-1:0]                                 wt_valid_i   // data in is valid
 );
@@ -85,10 +85,8 @@ module scoreboard #(
 
   // output commit instruction directly
   always_comb begin : commit_ports
-    for (int unsigned i = 0; i < NR_COMMIT_PORTS; i++) begin
+    for (int unsigned i = 0; i < NR_COMMIT_PORTS; i++)
       commit_instr_o[i] = mem_q[commit_pointer_q[i]].sbe;
-      commit_instr_o[i].trans_id = commit_pointer_q[i];
-    end
   end
 
   // an instruction is ready for issue if we have place in the issue FIFO and it the decoder says it is valid
@@ -118,15 +116,6 @@ module scoreboard #(
                                 ariane_pkg::is_rd_fpr(decoded_instr_i.op), // whether rd goes to the fpr
                                 decoded_instr_i                            // decoded instruction record
                                 };
-    end
-
-    // ------------
-    // FU NONE
-    // ------------
-    for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
-      // The FU is NONE -> this instruction is valid immediately
-      if (mem_q[i].sbe.fu == ariane_pkg::NONE && mem_q[i].issued)
-        mem_n[i].sbe.valid = 1'b1;
     end
 
     // ------------
@@ -266,7 +255,7 @@ module scoreboard #(
   // ----------------------------------
   // read operand interface: same logic as register file
   logic [NR_ENTRIES+NR_WB_PORTS-1:0] rs1_fwd_req, rs2_fwd_req, rs3_fwd_req;
-  logic [NR_ENTRIES+NR_WB_PORTS-1:0][riscv::XLEN-1:0] rs_data;
+  logic [NR_ENTRIES+NR_WB_PORTS-1:0][63:0] rs_data;
   logic rs1_valid, rs2_valid;
 
   // WB ports have higher prio than entries
@@ -291,7 +280,7 @@ module scoreboard #(
   // this implicitly gives higher prio to WB ports
   rr_arb_tree #(
     .NumIn(NR_ENTRIES+NR_WB_PORTS),
-    .DataWidth(riscv::XLEN),
+    .DataWidth(64),
     .ExtPrio(1'b1),
     .AxiVldRdy(1'b1)
   ) i_sel_rs1 (
@@ -310,7 +299,7 @@ module scoreboard #(
 
   rr_arb_tree #(
     .NumIn(NR_ENTRIES+NR_WB_PORTS),
-    .DataWidth(riscv::XLEN),
+    .DataWidth(64),
     .ExtPrio(1'b1),
     .AxiVldRdy(1'b1)
   ) i_sel_rs2 (
@@ -327,11 +316,9 @@ module scoreboard #(
     .idx_o   (             )
   );
 
-  riscv::xlen_t           rs3;
-
   rr_arb_tree #(
     .NumIn(NR_ENTRIES+NR_WB_PORTS),
-    .DataWidth(riscv::XLEN),
+    .DataWidth(64),
     .ExtPrio(1'b1),
     .AxiVldRdy(1'b1)
   ) i_sel_rs3 (
@@ -344,11 +331,9 @@ module scoreboard #(
     .data_i  ( rs_data     ),
     .gnt_i   ( 1'b1        ),
     .req_o   ( rs3_valid_o ),
-    .data_o  ( rs3         ),
+    .data_o  ( rs3_o       ),
     .idx_o   (             )
   );
-
-  assign rs3_o = rs3[ariane_pkg::FLEN-1:0];
 
   // sequential process
   always_ff @(posedge clk_i or negedge rst_ni) begin : regs

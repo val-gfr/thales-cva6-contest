@@ -18,8 +18,10 @@
 //              with a standard 64 bit AXI interface instead of the OpenPiton
 //              L1.5 interface.
 
+import ariane_pkg::*;
+import wt_cache_pkg::*;
 
-module wt_cache_subsystem import ariane_pkg::*; import wt_cache_pkg::*; #(
+module wt_cache_subsystem #(
   parameter ariane_pkg::ariane_cfg_t ArianeCfg       = ariane_pkg::ArianeDefaultConfig  // contains cacheable regions
 ) (
   input logic                            clk_i,
@@ -48,7 +50,6 @@ module wt_cache_subsystem import ariane_pkg::*; import wt_cache_pkg::*; #(
   output dcache_req_o_t   [2:0]          dcache_req_ports_o,     // to/from LSU
   // writebuffer status
   output logic                           wbuffer_empty_o,
-  output logic                           wbuffer_not_ni_o,
 `ifdef PITON_ARIANE
   // L15 (memory side)
   output l15_req_t                       l15_req_o,
@@ -109,7 +110,6 @@ module wt_cache_subsystem import ariane_pkg::*; import wt_cache_pkg::*; #(
     .flush_ack_o     ( dcache_flush_ack_o      ),
     .miss_o          ( dcache_miss_o           ),
     .wbuffer_empty_o ( wbuffer_empty_o         ),
-    .wbuffer_not_ni_o ( wbuffer_not_ni_o       ),
     .amo_req_i       ( dcache_amo_req_i        ),
     .amo_resp_o      ( dcache_amo_resp_o       ),
     .req_ports_i     ( dcache_req_ports_i      ),

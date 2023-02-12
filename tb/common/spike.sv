@@ -17,10 +17,7 @@ import uvm_pkg::*;
 `include "uvm_macros.svh"
 
 import "DPI-C" function int spike_create(string filename, longint unsigned dram_base, int unsigned size);
-
-typedef riscv::commit_log_t riscv_commit_log_t;
-import "DPI-C" function void spike_tick(output riscv_commit_log_t commit_log);
-
+import "DPI-C" function void spike_tick(output riscv::commit_log_t commit_log);
 import "DPI-C" function void clint_tick();
 
 module spike #(
@@ -51,7 +48,7 @@ module spike #(
         void'(spike_create(binary, DramBase, Size));
     end
 
-    riscv_commit_log_t commit_log;
+    riscv::commit_log_t commit_log;
     logic [31:0] instr;
 
     always_ff @(posedge clk_i) begin

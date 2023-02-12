@@ -13,8 +13,10 @@
 // ------------------------------
 // Instruction Cache
 // ------------------------------
+import ariane_pkg::*;
+import std_cache_pkg::*;
 
-module std_icache import ariane_pkg::*; import std_cache_pkg::*; (
+module std_icache (
     input  logic                     clk_i,
     input  logic                     rst_ni,
     input riscv::priv_lvl_t          priv_lvl_i,
@@ -427,7 +429,7 @@ module std_icache import ariane_pkg::*; import std_cache_pkg::*; (
             tag_q       <= '0;
             evict_way_q <= '0;
             flushing_q  <= 1'b0;
-            burst_cnt_q <= '0;
+            burst_cnt_q <= '0;;
         end else begin
             state_q     <= state_d;
             cnt_q       <= cnt_d;

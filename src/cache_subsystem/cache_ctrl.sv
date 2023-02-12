@@ -17,8 +17,10 @@
 //
 // Description: Cache controller
 
+import ariane_pkg::*;
+import std_cache_pkg::*;
 
-module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
+module cache_ctrl #(
     parameter logic [63:0] CACHE_START_ADDR  = 64'h4000_0000
 ) (
     input  logic                                 clk_i,     // Clock
@@ -60,14 +62,12 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
         IDLE,               // 0
         WAIT_TAG,           // 1
         WAIT_TAG_BYPASSED,  // 2
-        WAIT_GNT,           // 3
-        WAIT_GNT_SAVED,     // 4
-        STORE_REQ,          // 5
-        WAIT_REFILL_VALID,  // 6
-        WAIT_REFILL_GNT,    // 7
-        WAIT_TAG_SAVED,     // 8
-        WAIT_MSHR,          // 9
-        WAIT_CRITICAL_WORD  // 10
+        STORE_REQ,          // 3
+        WAIT_REFILL_VALID,  // 4
+        WAIT_REFILL_GNT,    // 5
+        WAIT_TAG_SAVED,     // 6
+        WAIT_MSHR,          // 7
+        WAIT_CRITICAL_WORD  // 8
     } state_d, state_q;
 
     typedef struct packed {
@@ -78,13 +78,11 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
         logic                   we;
         logic [63:0]            wdata;
         logic                   bypass;
-        logic                   killed;
     } mem_req_t;
 
     logic [DCACHE_SET_ASSOC-1:0] hit_way_d, hit_way_q;
 
     assign busy_o = (state_q != IDLE);
-    assign tag_o  = mem_req_d.tag;
 
     mem_req_t mem_req_d, mem_req_q;
 
@@ -122,9 +120,9 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
         addr_o = req_port_i.address_index;
         data_o = '0;
         be_o   = '0;
+        tag_o  = '0;
         we_o   = '0;
-
-        mem_req_d.killed |= req_port_i.kill_req;
+        tag_o  = 'b0;
 
         case (state_q)
 
@@ -136,15 +134,15 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
 
                     // save index, be and we
                     mem_req_d.index = req_port_i.address_index;
+                    mem_req_d.tag   = req_port_i.address_tag;
                     mem_req_d.be    = req_port_i.data_be;
                     mem_req_d.size  = req_port_i.data_size;
                     mem_req_d.we    = req_port_i.data_we;
                     mem_req_d.wdata = req_port_i.data_wdata;
-                    mem_req_d.killed = req_port_i.kill_req;
 
                     // Bypass mode, check for uncacheable address here as well
                     if (bypass_i) begin
-                        state_d = WAIT_TAG_BYPASSED;
+                        state_d = (req_port_i.data_we) ? WAIT_REFILL_GNT : WAIT_TAG_BYPASSED;
                         // grant this access only if it was a load
                         req_port_o.data_gnt = (req_port_i.data_we) ? 1'b0 : 1'b1;
                         mem_req_d.bypass = 1'b1;
@@ -166,16 +164,17 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
 
             // cache enabled and waiting for tag
             WAIT_TAG, WAIT_TAG_SAVED: begin
-                // check that the client really wants to do the request and that we have a valid tag
-                if (!req_port_i.kill_req && (req_port_i.tag_valid || state_q == WAIT_TAG_SAVED || mem_req_q.we)) begin
-                    // save tag if we didn't already save it
-                    if (state_q != WAIT_TAG_SAVED) begin
-                        mem_req_d.tag = req_port_i.address_tag;
-                    end
-                    // we speculatively request another transfer
-                    if (req_port_i.data_req && !flush_i) begin
-                        req_o = '1;
-                    end
+                // depending on where we come from
+                // For the store case the tag comes in the same cycle
+                tag_o = (state_q == WAIT_TAG_SAVED || mem_req_q.we) ? mem_req_q.tag
+                                                                    : req_port_i.address_tag;
+                // we speculatively request another transfer
+                if (req_port_i.data_req && !flush_i) begin
+                    req_o = '1;
+                end
+
+                // check that the client really wants to do the request
+                if (!req_port_i.kill_req) begin
                     // ------------
                     // HIT CASE
                     // ------------
@@ -188,7 +187,7 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
                             mem_req_d.size   = req_port_i.data_size;
                             mem_req_d.we     = req_port_i.data_we;
                             mem_req_d.wdata  = req_port_i.data_wdata;
-                            mem_req_d.killed = req_port_i.kill_req;
+                            mem_req_d.tag    = req_port_i.address_tag;
                             mem_req_d.bypass = 1'b0;
 
                             req_port_o.data_gnt = gnt_i;
@@ -209,7 +208,7 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
 
                         // report data for a read
                         if (!mem_req_q.we) begin
-                            req_port_o.data_rvalid = ~mem_req_q.killed;
+                            req_port_o.data_rvalid = 1'b1;
                         // else this was a store so we need an extra step to handle it
                         end else begin
                             state_d = STORE_REQ;
@@ -219,6 +218,8 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
                     // MISS CASE
                     // ------------
                     end else begin
+                        // also save the tag
+                        mem_req_d.tag = req_port_i.address_tag;
                         // make a miss request
                         state_d = WAIT_REFILL_GNT;
                     end
@@ -245,44 +246,20 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
                     //    req_port_o.data_rvalid will be de-asserted.
                     if ((mshr_index_matches_i && mem_req_q.we) || mshr_addr_matches_i) begin
                         state_d = WAIT_MSHR;
+                        // save tag if we didn't already save it e.g.: we are not in in the Tag saved state
+                        if (state_q != WAIT_TAG_SAVED) begin
+                            mem_req_d.tag = req_port_i.address_tag;
+                        end
                     end
 
                     // -------------------------
                     // Check for cache-ability
                     // -------------------------
                     if (tag_o < CACHE_START_ADDR[DCACHE_TAG_WIDTH+DCACHE_INDEX_WIDTH-1:DCACHE_INDEX_WIDTH]) begin
+                        mem_req_d.tag = req_port_i.address_tag;
                         mem_req_d.bypass = 1'b1;
                         state_d = WAIT_REFILL_GNT;
                     end
-
-                // we are still waiting for a valid tag
-                end else begin
-                    // request cache line for saved index
-                    addr_o = mem_req_q.index;
-                    req_o  = '1;
-
-                    // check that we still have a memory grant
-                    if (!gnt_i) begin
-                        state_d = WAIT_GNT;
-                    end
-                end
-            end
-
-            // ~> we already granted the request but lost the memory grant while waiting for the tag
-            WAIT_GNT, WAIT_GNT_SAVED: begin
-                // request cache line for saved index
-                addr_o = mem_req_q.index;
-                req_o  = '1;
-
-                // if we get a valid tag while waiting for the memory grant, save it
-                if (req_port_i.tag_valid) begin
-                    mem_req_d.tag = req_port_i.address_tag;
-                    state_d = WAIT_GNT_SAVED;
-                end
-
-                // we have a memory grant again ~> go back to WAIT_TAG
-                if (gnt_i) begin
-                    state_d = (state_d == WAIT_GNT) ? WAIT_TAG : WAIT_TAG_SAVED;
                 end
             end
 
@@ -333,8 +310,8 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
 
             // its for sure a miss
             WAIT_TAG_BYPASSED: begin
-                // check that the client really wants to do the request and that we have a valid tag
-                if (!req_port_i.kill_req && (req_port_i.tag_valid || mem_req_q.we)) begin
+                // the request was killed
+                if (!req_port_i.kill_req) begin
                     // save tag
                     mem_req_d.tag = req_port_i.address_tag;
                     state_d = WAIT_REFILL_GNT;
@@ -387,7 +364,7 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
                 end
 
                 if (critical_word_valid_i) begin
-                    req_port_o.data_rvalid = ~mem_req_q.killed;
+                    req_port_o.data_rvalid = 1'b1;
                     req_port_o.data_rdata = critical_word_i;
                     // we can make another request
                     if (req_port_i.data_req) begin
@@ -397,7 +374,7 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
                         mem_req_d.size  = req_port_i.data_size;
                         mem_req_d.we    = req_port_i.data_we;
                         mem_req_d.wdata = req_port_i.data_wdata;
-                        mem_req_d.killed = req_port_i.kill_req;
+                        mem_req_d.tag   = req_port_i.address_tag;
 
                         state_d = IDLE;
 
@@ -417,19 +394,15 @@ module cache_ctrl import ariane_pkg::*; import std_cache_pkg::*; #(
                 // got a valid answer
                 if (bypass_valid_i) begin
                     req_port_o.data_rdata = bypass_data_i;
-                    req_port_o.data_rvalid = ~mem_req_q.killed;
+                    req_port_o.data_rvalid = 1'b1;
                     state_d = IDLE;
                 end
             end
         endcase
 
         if (req_port_i.kill_req) begin
+            state_d = IDLE;
             req_port_o.data_rvalid = 1'b1;
-            if (!(state_q inside {
-                                  WAIT_REFILL_GNT,
-                                  WAIT_CRITICAL_WORD})) begin
-                state_d = IDLE;
-            end
         end
     end
 

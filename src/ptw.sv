@@ -14,11 +14,11 @@
 // Description: Hardware-PTW
 
 /* verilator lint_off WIDTH */
+import ariane_pkg::*;
 
-module ptw import ariane_pkg::*; #(
-        parameter int ASID_WIDTH = 1,
-        parameter ariane_pkg::ariane_cfg_t ArianeCfg = ariane_pkg::ArianeDefaultConfig
-) (
+module ptw #(
+        parameter int ASID_WIDTH = 1
+    )(
     input  logic                    clk_i,                  // Clock
     input  logic                    rst_ni,                 // Asynchronous reset active low
     input  logic                    flush_i,                // flush everything, we need to do this because
@@ -27,7 +27,6 @@ module ptw import ariane_pkg::*; #(
     output logic                    ptw_active_o,
     output logic                    walking_instr_o,        // set when walking for TLB
     output logic                    ptw_error_o,            // set when an error occurred
-    output logic                    ptw_access_exception_o, // set when an PMP access exception occured
     input  logic                    enable_translation_i,   // CSRs indicate to enable SV39
     input  logic                    en_ld_st_translation_i, // enable virtual memory translation for load/stores
 
@@ -41,29 +40,24 @@ module ptw import ariane_pkg::*; #(
     output tlb_update_t             itlb_update_o,
     output tlb_update_t             dtlb_update_o,
 
-    output logic [riscv::VLEN-1:0]  update_vaddr_o,
+    output logic [38:0]             update_vaddr_o,
 
     input  logic [ASID_WIDTH-1:0]   asid_i,
     // from TLBs
     // did we miss?
     input  logic                    itlb_access_i,
     input  logic                    itlb_hit_i,
-    input  logic [riscv::VLEN-1:0]  itlb_vaddr_i,
+    input  logic [63:0]             itlb_vaddr_i,
 
     input  logic                    dtlb_access_i,
     input  logic                    dtlb_hit_i,
-    input  logic [riscv::VLEN-1:0]  dtlb_vaddr_i,
+    input  logic [63:0]             dtlb_vaddr_i,
     // from CSR file
-    input  logic [riscv::PPNW-1:0]  satp_ppn_i, // ppn from satp
+    input  logic [43:0]             satp_ppn_i, // ppn from satp
     input  logic                    mxr_i,
     // Performance counters
     output logic                    itlb_miss_o,
-    output logic                    dtlb_miss_o,
-    // PMP
-
-    input  riscv::pmpcfg_t [15:0]   pmpcfg_i,
-    input  logic [15:0][53:0]       pmpaddr_i,
-    output logic [riscv::PLEN-1:0]  bad_paddr_o
+    output logic                    dtlb_miss_o
 
 );
 
@@ -79,8 +73,7 @@ module ptw import ariane_pkg::*; #(
       WAIT_GRANT,
       PTE_LOOKUP,
       WAIT_RVALID,
-      PROPAGATE_ERROR,
-      PROPAGATE_ACCESS_ERROR
+      PROPAGATE_ERROR
     } state_q, state_d;
 
     // SV39 defines three levels of page tables
@@ -96,9 +89,9 @@ module ptw import ariane_pkg::*; #(
     // register the ASID
     logic [ASID_WIDTH-1:0]  tlb_update_asid_q, tlb_update_asid_n;
     // register the VPN we need to walk, SV39 defines a 39 bit virtual address
-    logic [riscv::VLEN-1:0] vaddr_q,   vaddr_n;
+    logic [63:0] vaddr_q,   vaddr_n;
     // 4 byte aligned physical pointer
-    logic [riscv::PLEN-1:0] ptw_pptr_q, ptw_pptr_n;
+    logic[55:0] ptw_pptr_q, ptw_pptr_n;
 
     // Assignments
     assign update_vaddr_o  = vaddr_q;
@@ -115,8 +108,8 @@ module ptw import ariane_pkg::*; #(
     // -----------
     // TLB Update
     // -----------
-    assign itlb_update_o.vpn = {{39-riscv::SV{1'b0}}, vaddr_q[riscv::SV-1:12]};
-    assign dtlb_update_o.vpn = {{39-riscv::SV{1'b0}}, vaddr_q[riscv::SV-1:12]};
+    assign itlb_update_o.vpn = vaddr_q[38:12];
+    assign dtlb_update_o.vpn = vaddr_q[38:12];
     // update the correct page table level
     assign itlb_update_o.is_2M = (ptw_lvl_q == LVL2);
     assign itlb_update_o.is_1G = (ptw_lvl_q == LVL1);
@@ -130,26 +123,6 @@ module ptw import ariane_pkg::*; #(
     assign dtlb_update_o.content = pte | (global_mapping_q << 5);
 
     assign req_port_o.tag_valid      = tag_valid_q;
-
-    logic allow_access;
-
-    assign bad_paddr_o = ptw_access_exception_o ? ptw_pptr_q : 'b0;
-
-    pmp #(
-        .PLEN       ( riscv::PLEN            ),
-        .PMP_LEN    ( riscv::PLEN - 2        ),
-        .NR_ENTRIES ( ArianeCfg.NrPMPEntries )
-    ) i_pmp_ptw (
-        .addr_i        ( ptw_pptr_q         ),
-        // PTW access are always checked as if in S-Mode...
-        .priv_lvl_i    ( riscv::PRIV_LVL_S  ),
-        // ...and they are always loads
-        .access_type_i ( riscv::ACCESS_READ ),
-        // Configuration
-        .conf_addr_i   ( pmpaddr_i          ),
-        .conf_i        ( pmpcfg_i           ),
-        .allow_o       ( allow_access       )
-    );
 
     //-------------------
     // Page table walker
@@ -177,20 +150,19 @@ module ptw import ariane_pkg::*; #(
     always_comb begin : ptw
         // default assignments
         // PTW memory interface
-        tag_valid_n            = 1'b0;
-        req_port_o.data_req    = 1'b0;
-        req_port_o.data_be     = 8'hFF;
-        req_port_o.data_size   = 2'b11;
-        req_port_o.data_we     = 1'b0;
-        ptw_error_o            = 1'b0;
-        ptw_access_exception_o = 1'b0;
-        itlb_update_o.valid    = 1'b0;
-        dtlb_update_o.valid    = 1'b0;
-        is_instr_ptw_n         = is_instr_ptw_q;
-        ptw_lvl_n              = ptw_lvl_q;
-        ptw_pptr_n             = ptw_pptr_q;
-        state_d                = state_q;
-        global_mapping_n       = global_mapping_q;
+        tag_valid_n           = 1'b0;
+        req_port_o.data_req   = 1'b0;
+        req_port_o.data_be    = 8'hFF;
+        req_port_o.data_size  = 2'b11;
+        req_port_o.data_we    = 1'b0;
+        ptw_error_o           = 1'b0;
+        itlb_update_o.valid   = 1'b0;
+        dtlb_update_o.valid   = 1'b0;
+        is_instr_ptw_n        = is_instr_ptw_q;
+        ptw_lvl_n             = ptw_lvl_q;
+        ptw_pptr_n            = ptw_pptr_q;
+        state_d               = state_q;
+        global_mapping_n      = global_mapping_q;
         // input registers
         tlb_update_asid_n     = tlb_update_asid_q;
         vaddr_n               = vaddr_q;
@@ -207,7 +179,7 @@ module ptw import ariane_pkg::*; #(
                 is_instr_ptw_n   = 1'b0;
                 // if we got an ITLB miss
                 if (enable_translation_i & itlb_access_i & ~itlb_hit_i & ~dtlb_access_i) begin
-                    ptw_pptr_n          = {satp_ppn_i, itlb_vaddr_i[riscv::SV-1:30], 3'b0};
+                    ptw_pptr_n          = {satp_ppn_i, itlb_vaddr_i[38:30], 3'b0};
                     is_instr_ptw_n      = 1'b1;
                     tlb_update_asid_n   = asid_i;
                     vaddr_n             = itlb_vaddr_i;
@@ -215,7 +187,7 @@ module ptw import ariane_pkg::*; #(
                     itlb_miss_o         = 1'b1;
                 // we got an DTLB miss
                 end else if (en_ld_st_translation_i & dtlb_access_i & ~dtlb_hit_i) begin
-                    ptw_pptr_n          = {satp_ppn_i, dtlb_vaddr_i[riscv::SV-1:30], 3'b0};
+                    ptw_pptr_n          = {satp_ppn_i, dtlb_vaddr_i[38:30], 3'b0};
                     tlb_update_asid_n   = asid_i;
                     vaddr_n             = dtlb_vaddr_i;
                     state_d             = WAIT_GRANT;
@@ -327,15 +299,6 @@ module ptw import ariane_pkg::*; #(
                             end
                         end
                     end
-                    
-                    // Check if this access was actually allowed from a PMP perspective
-                    if (!allow_access) begin
-                        itlb_update_o.valid = 1'b0;
-                        dtlb_update_o.valid = 1'b0;
-                        // we have to return the failed address in bad_addr
-                        ptw_pptr_n = ptw_pptr_q; 
-                        state_d = PROPAGATE_ACCESS_ERROR;
-                    end
                 end
                 // we've got a data WAIT_GRANT so tell the cache that the tag is valid
             end
@@ -343,10 +306,6 @@ module ptw import ariane_pkg::*; #(
             PROPAGATE_ERROR: begin
                 state_d     = IDLE;
                 ptw_error_o = 1'b1;
-            end
-            PROPAGATE_ACCESS_ERROR: begin
-                state_d     = IDLE;
-                ptw_access_exception_o = 1'b1;
             end
             // wait for the rvalid before going back to IDLE
             WAIT_RVALID: begin

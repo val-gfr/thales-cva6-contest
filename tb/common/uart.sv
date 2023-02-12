@@ -99,6 +99,6 @@ interface uart_bus #(
     tx = 1'b1;
     #(BIT_PERIOD);
   endtask
-`endif
 /* pragma translate_on */
+`endif
 endinterface

@@ -22,19 +22,19 @@ module instr_scan (
     output logic        rvi_branch_o,
     output logic        rvi_jalr_o,
     output logic        rvi_jump_o,
-    output logic [riscv::VLEN-1:0] rvi_imm_o,
+    output logic [63:0] rvi_imm_o,
     output logic        rvc_branch_o,
     output logic        rvc_jump_o,
     output logic        rvc_jr_o,
     output logic        rvc_return_o,
     output logic        rvc_jalr_o,
     output logic        rvc_call_o,
-    output logic [riscv::VLEN-1:0] rvc_imm_o
+    output logic [63:0] rvc_imm_o
 );
     logic is_rvc;
     assign is_rvc     = (instr_i[1:0] != 2'b11);
-    // check that rs1 is either x1 or x5 and that rd is not rs1
-    assign rvi_return_o = rvi_jalr_o & ((instr_i[19:15] == 5'd1) | instr_i[19:15] == 5'd5)
+    // check that rs1 is either x1 or x5 and that rs1 is not x1 or x5
+    assign rvi_return_o = rvi_jalr_o & ((instr_i[11:7] == 5'd1) | instr_i[11:7] == 5'd5)
                                      & (instr_i[19:15] != instr_i[11:7]);
     // Opocde is JAL[R] and destination register is either x1 or x5
     assign rvi_call_o   = (rvi_jalr_o | rvi_jump_o) & ((instr_i[11:7] == 5'd1) | instr_i[11:7] == 5'd5);
@@ -64,6 +64,6 @@ module instr_scan (
     assign rvc_return_o = ((instr_i[11:7] == 5'd1) | (instr_i[11:7] == 5'd5))  & rvc_jr_o ;
 
     // differentiates between JAL and BRANCH opcode, JALR comes from BHT
-    assign rvc_imm_o    = (instr_i[14]) ? {{56+riscv::VLEN-64{instr_i[12]}}, instr_i[6:5], instr_i[2], instr_i[11:10], instr_i[4:3], 1'b0}
-                                       : {{53+riscv::VLEN-64{instr_i[12]}}, instr_i[8], instr_i[10:9], instr_i[6], instr_i[7], instr_i[2], instr_i[11], instr_i[5:3], 1'b0};
+    assign rvc_imm_o    = (instr_i[14]) ? {{56{instr_i[12]}}, instr_i[6:5], instr_i[2], instr_i[11:10], instr_i[4:3], 1'b0}
+                                       : {{53{instr_i[12]}}, instr_i[8], instr_i[10:9], instr_i[6], instr_i[7], instr_i[2], instr_i[11], instr_i[5:3], 1'b0};
 endmodule

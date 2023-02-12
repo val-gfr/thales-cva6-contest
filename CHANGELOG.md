@@ -6,13 +6,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Added
-
-### Changed
-
-- Fix non-setable MEIE bit in MIE CSR
-- Bump `fpnew` to `v0.6.2`
-
 ### 4.2.0 - 2019-06-04
 
 ### Added

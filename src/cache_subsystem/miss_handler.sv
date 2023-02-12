@@ -15,8 +15,10 @@
 // --------------
 // MISS Handler
 // --------------
+import ariane_pkg::*;
+import std_cache_pkg::*;
 
-module miss_handler import ariane_pkg::*; import std_cache_pkg::*; #(
+module miss_handler #(
     parameter int unsigned NR_PORTS         = 3
 )(
     input  logic                                        clk_i,
@@ -143,7 +145,6 @@ module miss_handler import ariane_pkg::*; import std_cache_pkg::*; #(
         we_o   = '0;
         // Cache controller
         miss_gnt_o = '0;
-        active_serving_o = '0;
         // LFSR replacement unit
         lfsr_enable = 1'b0;
         // to AXI refill

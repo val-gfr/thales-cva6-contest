@@ -161,10 +161,8 @@ zephyr_compile_options($<$<COMPILE_LANGUAGE:CXX>:$<TARGET_PROPERTY:compiler-cpp,
 zephyr_compile_definitions($<TARGET_PROPERTY:compiler,security_fortify> )
 
 # modif Valentin -> fstack protector
-zephyr_compile_options(-fstack-protector)
-
-# modif Valentin -> activate canaries by default
-# zephyr_compile_options($<TARGET_PROPERTY:compiler,security_canaries>)
+# zephyr_compile_options(-fstack-protector)
+zephyr_compile_options(-fstack-protector-strong)
 
 # @Intent: Set compiler flags to detect general stack overflows across all functions
 #if(CONFIG_STACK_CANARIES)

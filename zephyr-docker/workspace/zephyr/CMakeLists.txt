@@ -160,14 +160,13 @@ zephyr_compile_options($<$<COMPILE_LANGUAGE:CXX>:$<TARGET_PROPERTY:compiler-cpp,
 # @config in CONFIG_NO_OPTIMIZATIONS optional : Optimizations may affect security
 zephyr_compile_definitions($<TARGET_PROPERTY:compiler,security_fortify> )
 
-# modif Valentin -> fstack protector
-# zephyr_compile_options(-fstack-protector)
-zephyr_compile_options(-fstack-protector-strong)
+# modif Valentin -> activate canaries by default
+# zephyr_compile_options($<TARGET_PROPERTY:compiler,security_canaries>)
 
 # @Intent: Set compiler flags to detect general stack overflows across all functions
-#if(CONFIG_STACK_CANARIES)
-# 	zephyr_compile_options($<TARGET_PROPERTY:compiler,security_canaries>)
-# endif()
+if(CONFIG_STACK_CANARIES)
+ 	zephyr_compile_options($<TARGET_PROPERTY:compiler,security_canaries>)
+endif()
 
 # @Intent: Obtain compiler optimizations flags and store in variables
 # @details:

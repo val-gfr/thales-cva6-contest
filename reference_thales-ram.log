@@ -1,4 +1,0 @@
-[104/104] Linking C executable zephyr/zephyr.elf
-Memory region         Used Size  Region Size  %age Used
-             RAM:       47160 B         1 GB      0.00%
-        IDT_LIST:          0 GB         2 KB      0.00%
